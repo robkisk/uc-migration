@@ -45,11 +45,11 @@ created = w.external_locations.create(
 configs = {
     "fs.azure.account.auth.type": "OAuth",
     "fs.azure.account.oauth.provider.type": "org.apache.hadoop.fs.azurebfs.oauth2.ClientCredsTokenProvider",
-    "fs.azure.account.oauth2.client.id": "ed573937-9c53-4ed6-b016-929e765443eb",
+    "fs.azure.account.oauth2.client.id": "",
     "fs.azure.account.oauth2.client.secret": w.dbutils.secrets.get(
         scope="demo-robkisk", key="AZ_CLIENT_SECRET"
     ),
-    "fs.azure.account.oauth2.client.endpoint": "https://login.microsoftonline.com/9f37a392-f0ae-4280-9796-f1864a10effc/oauth2/token",
+    "fs.azure.account.oauth2.client.endpoint": "",
 }
 
 # mount the storage account
