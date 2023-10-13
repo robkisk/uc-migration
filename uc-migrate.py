@@ -11,10 +11,10 @@ from databricks.sdk import WorkspaceClient
 # storage and container here can be customized for UC separations ie. dev and prod or business unit.
 # in this example, we will just use a dev container with a single storage account for simplicity
 adls_root_path = "abfss://development@robkiskstorageacc.dfs.core.windows.net"
-ext_storage_loc = "bbc-dev"
+ext_storage_loc = "dev"
 marketing_analytics_mount_point = "/mnt/enriched/adverity/marketing_analytics/"
-hms_db_name = "marketing_analytics_bbc"
-uc_catalog_name = "marketing_analytics_bbc_uc"
+hms_db_name = "marketing_analytics"
+uc_catalog_name = "marketing_analytics_uc"
 
 # COMMAND ----------
 # ---------------------------------------------------------------------------- #
@@ -32,13 +32,13 @@ created = w.external_locations.create(
     name=ext_storage_loc,
     credential_name="oneenv-adls",
     url=adls_root_path,
-    comment="BBC Demo for UC Migration",
+    comment="Demo for UC Migration",
 )
 
 # COMMAND ----------
 # example acl commands against ext storage
-# spark.sql("ALTER EXTERNAL LOCATION `bbc-dev-2` OWNER TO `account users`")
-# spark.sql("show grants on external location `bbc-dev-2`").show(10, False)
+# spark.sql("ALTER EXTERNAL LOCATION `dev-2` OWNER TO `account users`")
+# spark.sql("show grants on external location `dev-2`").show(10, False)
 
 
 # COMMAND ----------
@@ -77,7 +77,7 @@ df = spark.sql(
 df.write.format("delta").save(f"dbfs:{marketing_analytics_mount_point}dcm_ext_1")
 spark.sql(
     f"""
-create table if not exists hive_metastore.marketing_analytics_bbc.dcm_ext_1
+create table if not exists hive_metastore.marketing_analytics.dcm_ext_1
 using delta 
 location 'dbfs:{marketing_analytics_mount_point}dcm_ext_1'
 """
@@ -146,9 +146,7 @@ spark.sql(
 ).show(10, False)
 
 # COMMAND ----------
-spark.sql(
-    "desc table extended marketing_analytics_bbc_uc.marketing_analytics_bbc.dcm_managed_to_ext"
-).show(100, False)
+spark.sql("desc table extended marketing_analytics_dcm_managed_to_ext").show(100, False)
 
 
 # COMMAND ----------
@@ -189,11 +187,11 @@ print(should_copy_table("hive_metastore.uc_database_to_upgrade_robkisk.users"))
 
 # COMMAND ----------
 # (location='dbfs:/mnt/enriched/adverity/marketing_analytics/dcm', is_view=False, is_delta=True, should_copy=False)
-print(should_copy_table("hive_metastore.marketing_analytics_bbc.dcm"))
+print(should_copy_table("hive_metastore.marketing_analytics.dcm"))
 
 # COMMAND ----------
 # ('location=dbfs:/mnt/enriched/adverity/marketing_analytics/dcm_managed', is_view=False, is_delta=True, should_copy=True)
-print(should_copy_table("hive_metastore.marketing_analytics_bbc.dcm_managed"))
+print(should_copy_table("hive_metastore.marketing_analytics.dcm_managed"))
 
 # COMMAND ----------
 # don't copy as it's an external table
