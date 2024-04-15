@@ -6,33 +6,25 @@
 # MAGIC %md-sandbox
 # MAGIC # Ignore this section since it only re-creates HMS table for demo purposes
 # COMMAND ----------
-from databricks.sdk import WorkspaceClient
-
 # storage and container here can be customized for UC separations ie. dev and prod or business unit.
 # in this example, we will just use a dev container with a single storage account for simplicity
-adls_root_path = "abfss://development@robkiskstorageacc.dfs.core.windows.net"
-ext_storage_loc = "dev"
-marketing_analytics_mount_point = "/mnt/enriched/adverity/marketing_analytics/"
-hms_db_name = "marketing_analytics"
-uc_catalog_name = "marketing_analytics_uc"
-
+# MountInfo(mountPoint='/mnt/enriched', source='abfss://enriched@stbbcdatalakedev.dfs.core.windows.net/', encryptionType='')
 # COMMAND ----------
 # ---------------------------------------------------------------------------- #
 #         SETTING UP HMS for current `mnt/enriched/adverity` structure         #
 # ---------------------------------------------------------------------------- #
 from get_spark import GetSpark
 
-# this just looks for key you have in `~/.databrickscfg` if you wanted to use custom spark locally against Databricks
-# spark = GetSpark("azph").init_spark(eager=True)
+spark = GetSpark("azph").init_spark(eager=True)
 
+# COMMAND ----------
+from databricks.sdk import WorkspaceClient
 w = WorkspaceClient()
-# External Location example using sdk pointing to root location without a sub-path
-# This can also be governed by UC and can be separated by business unit ie. marketing, finance, etc. if needed.
 created = w.external_locations.create(
-    name=ext_storage_loc,
+    name="ext-loc-test-robkisk",
     credential_name="oneenv-adls",
-    url=adls_root_path,
-    comment="Demo for UC Migration",
+    url="abfss://development@robkiskstorageacc.dfs.core.windows.net",
+    comment="Data Ingestion Test",
 )
 
 # COMMAND ----------
@@ -40,29 +32,45 @@ created = w.external_locations.create(
 # spark.sql("ALTER EXTERNAL LOCATION `dev-2` OWNER TO `account users`")
 # spark.sql("show grants on external location `dev-2`").show(10, False)
 
+# ext_storage_loc = "bbc-dev"
+
+# COMMAND ----------
+df = spark.sql(
+    "select * from delta.`dbfs:/databricks-datasets/learning-spark-v2/people/people-10m.delta` limit 10"
+)
+df.show()
+
 
 # COMMAND ----------
 configs = {
     "fs.azure.account.auth.type": "OAuth",
     "fs.azure.account.oauth.provider.type": "org.apache.hadoop.fs.azurebfs.oauth2.ClientCredsTokenProvider",
-    "fs.azure.account.oauth2.client.id": "",
+    "fs.azure.account.oauth2.client.id": "ed573937-9c53-4ed6-b016-929e765443eb",
     "fs.azure.account.oauth2.client.secret": w.dbutils.secrets.get(
         scope="demo-robkisk", key="AZ_CLIENT_SECRET"
     ),
-    "fs.azure.account.oauth2.client.endpoint": "",
+    "fs.azure.account.oauth2.client.endpoint": "https://login.microsoftonline.com/9f37a392-f0ae-4280-9796-f1864a10effc/oauth2/token",
 }
 
 # mount the storage account
+adls_root_path = "abfss://enriched@robkiskstorageacc.dfs.core.windows.net"
+adls_root_mnt_point = "/demo/customer_v2/"
+# abfss://enriched@stbbcdatalakedev.dfs.core.windows.net/
+# marketing_analytics_mount_point = "/mnt/enriched/adverity/marketing_analytics/"
+# marketing_analytics_mount_point = "/mnt/enriched/"
+# hms_db_name = "marketing_analytics"
+# uc_catalog_name = "marketing_analytics_uc"
+
 w.dbutils.fs.mount(
     source=adls_root_path,
-    mount_point=marketing_analytics_mount_point,
+    mount_point=adls_root_mnt_point,
     extra_configs=configs,
 )
 
 # COMMAND ----------
 # HMS Database to contain external dbfs mounted tables to be upgraded to UC with sync command
 spark.sql(
-    f"create database if not exists hive_metastore.{hms_db_name} location 'dbfs:{marketing_analytics_mount_point}'"
+    f"create database if not exists hive_metastore.{hms_db_name} location 'dbfs:{marketing_analytics_mount_point}adverity/marketing_analytics'"
 )
 
 
@@ -74,17 +82,21 @@ spark.sql(f"desc database extended hive_metastore.{hms_db_name}").show(20, False
 df = spark.sql(
     "select * from delta.`dbfs:/databricks-datasets/learning-spark-v2/people/people-10m.delta` limit 100"
 )
-df.write.format("delta").save(f"dbfs:{marketing_analytics_mount_point}dcm_ext_1")
+df.write.format("delta").save(
+    f"dbfs:{marketing_analytics_mount_point}adverity/marketing_analytics/dcm"
+)
 spark.sql(
     f"""
-create table if not exists hive_metastore.marketing_analytics.dcm_ext_1
+create table if not exists hive_metastore.marketing_analytics.dcm
 using delta 
-location 'dbfs:{marketing_analytics_mount_point}dcm_ext_1'
+location 'dbfs:{marketing_analytics_mount_point}adverity/marketing_analytics/dcm'
 """
 )
 
 # COMMAND ----------
-spark.sql(f"desc table extended hive_metastore.{hms_db_name}.dcm_ext_1").show(20, False)
+# spark.sql(f"desc table extended hive_metastore.{hms_db_name}.dcm_ext_1").show(20, False)
+
+spark.sql("desc table extended hive_metastore.marketing_analytics.dcm").show(20, False)
 
 
 # COMMAND ----------
@@ -94,12 +106,19 @@ spark.sql(f"desc table extended hive_metastore.{hms_db_name}.dcm_ext_1").show(20
 # ---------------------------------------------------------------------------- #
 #                            BEGIN UC CATALOG SETUP                            #
 # ---------------------------------------------------------------------------- #
-
 spark.sql(
-    f"create catalog if not exists {uc_catalog_name} managed location '{adls_root_path}'"
+    # "create catalog if not exists marketing_analytics managed location 'abfss://enriched@stbbcdatalakedev.dfs.core.windows.net'"
+    "create catalog if not exists marketing_analytics managed location 'abfss://enriched@robkiskstorageacc.dfs.core.windows.net'"
 )
-spark.sql(f"use catalog {uc_catalog_name}")
-spark.sql(f"desc catalog extended {uc_catalog_name}").show(100, False)
+spark.sql(f"use catalog marketing_analytics")
+spark.sql(f"desc catalog extended marketing_analytics").show(100, False)
+
+
+# spark.sql(
+#     f"create catalog if not exists {uc_catalog_name} managed location '{adls_root_path}'"
+# )
+# spark.sql(f"use catalog {uc_catalog_name}")
+# spark.sql(f"desc catalog extended {uc_catalog_name}").show(100, False)
 
 # COMMAND ----------
 # here schema can now be broken down into separate schemas for marketing.
@@ -119,7 +138,7 @@ spark.sql("desc schema extended marketing_schema1").show(100, False)
 # sync 1 table only idempotently
 # very important to run `DRY RUN` first to see success code followed by running without the DRY RUN flag
 spark.sql(
-    f"sync table {uc_catalog_name}.marketing_schema1.dcm from hive_metastore.{hms_db_name}.dcm dry run"
+    f"sync table {uc_catalog_name}.marketing_schema1.dcm from hive_metastore.marketing_analytics.dcm dry run"
 ).show(10, False)
 
 # COMMAND ----------
@@ -140,13 +159,13 @@ spark.sql(f"desc table extended {uc_catalog_name}.marketing_schema1.dcm").show(1
 # sync command will not work without this flag being set before-hand
 spark.conf.set("spark.databricks.sync.command.enableManagedTable", "True")
 
-# COMMAND ----------
 spark.sql(
-    f"sync table {uc_catalog_name}.marketing_schema1.dcm_managed_to_ext from hive_metastore.{hms_db_name}.dcm_managed_to_ext DRY RUN"
+    "sync table marketing_analytics_uc.marketing_schema1.dcm_managed_to_ext from hive_metastore.marketing_analytics.dcm_managed_to_ext DRY RUN"
 ).show(10, False)
 
-# COMMAND ----------
-spark.sql("desc table extended marketing_analytics_dcm_managed_to_ext").show(100, False)
+spark.sql(
+    "desc table extended marketing_analytics_uc.marketing_schema1.dcm_managed_to_ext"
+).show(100, False)
 
 
 # COMMAND ----------
